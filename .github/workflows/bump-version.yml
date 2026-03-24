@@ -1,0 +1,55 @@
+name: Bump Version
+
+# ──────────────────────────────────────────────
+# トリガー: Actions タブから手動実行
+# バージョン番号を入力すると以下を自動実行:
+#   1. pyproject.toml と __init__.py のバージョンを更新
+#   2. CHANGELOG.md の [Unreleased] を新バージョンに置換
+#   3. git commit & tag を作成・push
+#   4. tag push により release.yml が自動起動
+# ──────────────────────────────────────────────
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "新しいバージョン番号 (例: 0.2.0)"
+        required: true
+        type: string
+
+jobs:
+  bump:
+    name: Bump version to v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update version in pyproject.toml
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
+
+      - name: Update version in __init__.py
+        run: |
+          sed -i 's/__version__ = ".*"/__version__ = "${{ inputs.version }}"/' src/sf_package_xml/__init__.py
+
+      - name: Update CHANGELOG.md
+        run: |
+          TODAY=$(date +%Y-%m-%d)
+          # [Unreleased] → [x.y.z] - YYYY-MM-DD に置換
+          sed -i "s/^## \[Unreleased\]/## [${{ inputs.version }}] - ${TODAY}/" CHANGELOG.md
+          # 新しい [Unreleased] セクションを先頭に追加
+          sed -i "/^## \[${{ inputs.version }}\]/i ## [Unreleased]\n" CHANGELOG.md
+          # フッターのリンクを追加
+          sed -i "s|\[Unreleased\]: \(.*\)/compare/v\(.*\)\.\.\.HEAD|\[Unreleased\]: \1/compare/v${{ inputs.version }}...HEAD\n[${{ inputs.version }}]: \1/compare/v\2...v${{ inputs.version }}|" CHANGELOG.md
+
+      - name: Commit, tag, and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml src/sf_package_xml/__init__.py CHANGELOG.md
+          git commit -m "chore: bump version to v${{ inputs.version }}"
+          git tag "v${{ inputs.version }}"
+          git push origin main
+          git push origin "v${{ inputs.version }}"
