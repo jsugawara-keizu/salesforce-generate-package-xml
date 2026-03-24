@@ -18,6 +18,7 @@ from sf_package_xml.metadata import (
     _process_folder,
     fetch_standard_value_set_members,
     get_metadata_types,
+    get_org_api_version,
     prefetch_folder_lists,
     print_api_usage,
     tprint,
@@ -40,8 +41,8 @@ def main() -> None:
     )
     parser.add_argument(
         "-v", "--api-version",
-        default="62.0",
-        help="Metadata API バージョン (デフォルト: 62.0)",
+        default=None,
+        help="Metadata API バージョン (省略時は org から自動取得、取得失敗時は 62.0)",
     )
     parser.add_argument(
         "--output",
@@ -97,8 +98,23 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    _FALLBACK_API_VERSION = "62.0"
+
     target_org: Optional[str] = args.target_org
-    api_version: str = args.api_version
+    if args.api_version is not None:
+        api_version: str = args.api_version
+    else:
+        detected = get_org_api_version(target_org)
+        if detected:
+            print(f"API バージョンを org から自動取得しました: {detected}", flush=True)
+            api_version = detected
+        else:
+            print(
+                f"  [WARN] API バージョンの自動取得に失敗しました。"
+                f"フォールバック値 {_FALLBACK_API_VERSION} を使用します。",
+                file=sys.stderr,
+            )
+            api_version = _FALLBACK_API_VERSION
     wildcard: bool = args.wildcard
     skip_folders: bool = args.skip_folders
     verbose: bool = args.verbose
