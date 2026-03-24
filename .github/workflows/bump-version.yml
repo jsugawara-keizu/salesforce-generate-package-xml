@@ -6,7 +6,10 @@ name: Bump Version
 #   1. pyproject.toml と __init__.py のバージョンを更新
 #   2. CHANGELOG.md の [Unreleased] を新バージョンに置換
 #   3. git commit & tag を作成・push
-#   4. tag push により release.yml が自動起動
+#   4. CHANGELOG.md からリリースノートを抽出して GitHub Release を作成
+#
+# 注意: GITHUB_TOKEN によるタグ push は他ワークフローをトリガーしないため
+#       release.yml を呼ぶのではなくこのジョブ内で Release 作成まで行う。
 # ──────────────────────────────────────────────
 on:
   workflow_dispatch:
@@ -53,3 +56,33 @@ jobs:
           git tag "v${{ inputs.version }}"
           git push origin main
           git push origin "v${{ inputs.version }}"
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          # ## [x.y.z] から次の ## [ までの行を抽出
+          NOTES=$(awk \
+            "/^## \[${VERSION}\]/{found=1; next} \
+             found && /^## \[/{exit} \
+             found{print}" \
+            CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            NOTES="リリースノートは [CHANGELOG.md](CHANGELOG.md) を参照してください。"
+          fi
+
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --title "Release v${{ inputs.version }}" \
+            --notes "${{ steps.changelog.outputs.notes }}"
