@@ -152,6 +152,22 @@ def run_sf(
     return None
 
 
+def get_org_api_version(target_org: Optional[str]) -> Optional[str]:
+    """
+    org の instanceApiVersion を取得して返す。
+
+    "sf org display" を実行し、result.instanceApiVersion フィールドを返す。
+    取得できない場合は None を返す (呼び出し元でフォールバックすること)。
+    """
+    data = run_sf(["org", "display"], target_org)
+    if data is None:
+        return None
+    version = data.get("result", {}).get("instanceApiVersion")
+    if isinstance(version, str) and version:
+        return version
+    return None
+
+
 def get_api_usage(target_org: Optional[str]) -> Optional[tuple[int, int]]:
     """
     DailyApiRequests の使用数と上限を (used, max) のタプルで返す。
