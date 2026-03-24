@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-24
+
+### 追加
+
+- `--api-version` 省略時に org から API バージョンを自動取得する機能 (`get_org_api_version`)
+- リリース自動化ワークフロー
+  - `bump-version.yml`: Actions タブから手動実行してバージョン更新・タグ作成を自動化
+  - `release.yml`: タグ push をトリガーに CHANGELOG.md からリリースノートを抽出して GitHub Release を自動作成
+- GitHub Actions CI ワークフロー (lint / test / type-check)
+- `tests/test_metadata.py`: `get_org_api_version()` のユニットテスト 6件
+
+### 変更
+
+- `--api-version` のデフォルト値を `62.0` から org 自動取得に変更 (取得失敗時は `62.0` にフォールバック)
+- インストール方法の推奨を `pipx` に変更 (README 更新)
+
 ## [0.1.0] - 2026-03-24
 
 ### 追加
