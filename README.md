@@ -23,18 +23,48 @@ Salesforce org に存在するすべてのメタデータを網羅した `packag
 
 ## インストール
 
+### pipx を使う方法 (推奨)
+
+[pipx](https://pipx.pypa.io/) は CLI ツール専用の隔離環境を自動管理するツールです。
+SFDXプロジェクトを汚さずにグローバルで使えるため、通常の利用にはこちらを推奨します。
+
+```bash
+# pipx 自体のインストール (未インストールの場合)
+brew install pipx
+pipx ensurepath
+
+# sf-package-xml をインストール
+pipx install git+https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
+```
+
+インストール後はどのディレクトリからでも実行できます:
+
+```bash
+sf-package-xml -o myOrg
+```
+
+アップデートする場合:
+
+```bash
+pipx upgrade sf-package-xml
+```
+
+### pip を使う方法
+
+プロジェクトの仮想環境に組み込む場合や、開発目的の場合はこちら。
+
 ```bash
 # リポジトリをクローン
-git clone https://github.com/<your-username>/salesforce-generate-package-xml.git
+git clone https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
 cd salesforce-generate-package-xml
 
-# パッケージをインストール (開発モード)
+# 仮想環境を作成してインストール
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
-インストール後は `sf-package-xml` コマンドとして実行できます。
-
-Python 環境を使わずに直接実行することもできます:
+または `python -m sf_package_xml` でも実行できます:
 
 ```bash
 python -m sf_package_xml -o myOrg
