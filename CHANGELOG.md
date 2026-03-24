@@ -8,6 +8,10 @@
 
 ## [0.2.0] - 2026-03-24
 
+## [Unreleased]
+
+## [0.2.0] - 2026-03-24
+
 ### 追加
 
 - `--api-version` 省略時に org から API バージョンを自動取得する機能 (`get_org_api_version`)
@@ -47,5 +51,6 @@
 - pytest による 53 ユニットテスト (filters / xml_builder)
 - MIT ライセンス
 
-[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/releases/tag/v0.1.0
