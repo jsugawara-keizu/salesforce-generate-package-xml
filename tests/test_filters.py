@@ -5,8 +5,6 @@ filters.py のテスト
 すべてユニットテストとして実行できる。
 """
 
-import pytest
-
 from sf_package_xml.filters import (
     _base_name,
     _check_ns_single,

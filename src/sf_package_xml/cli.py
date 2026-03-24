@@ -159,7 +159,7 @@ def main() -> None:
         for xml_name, mt in sorted(type_map.items()):
             if xml_name in SKIP_TYPES or xml_name == "StandardValueSet":
                 continue
-            in_folder: bool = mt.get("inFolder", False)
+            in_folder = mt.get("inFolder", False)
             if in_folder or xml_name in FOLDER_BASED_TYPES:
                 if skip_folders:
                     tprint(f"[FolderBased] {xml_name} をスキップ (--skip-folders)", flush=True)
@@ -282,8 +282,8 @@ def main() -> None:
     print("\npackage.xml を生成中 ...", flush=True)
     for i, (chunk, path) in enumerate(zip(chunks, output_paths), 1):
         xml_content = build_package_xml(chunk, api_version)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(xml_content)
+        with open(path, "w", encoding="utf-8") as fp:
+            fp.write(xml_content)
         chunk_total = sum(len(v) for v in chunk.values())
         print(f"  [{i}/{len(chunks)}] {path}  ({len(chunk)} タイプ / {chunk_total} メンバー)")
 

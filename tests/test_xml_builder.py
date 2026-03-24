@@ -4,8 +4,6 @@ xml_builder.py のテスト
 XML 生成・分割ロジックは外部依存なしでテスト可能。
 """
 
-import pytest
-
 from sf_package_xml.xml_builder import (
     build_package_xml,
     split_metadata_map,
