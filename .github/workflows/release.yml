@@ -1,0 +1,53 @@
+name: Release
+
+# ──────────────────────────────────────────────
+# トリガー: v* 形式のタグが push されたとき
+#   (bump-version.yml が自動的に push するか、
+#    手動で git tag v1.0.0 && git push origin v1.0.0 した場合)
+# ──────────────────────────────────────────────
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NUM="${VERSION#v}"   # v0.2.0 → 0.2.0
+
+          # ## [x.y.z] から次の ## [ までの行を抽出
+          NOTES=$(awk \
+            "/^## \[${VERSION_NUM}\]/{found=1; next} \
+             found && /^## \[/{exit} \
+             found{print}" \
+            CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            NOTES="リリースノートは [CHANGELOG.md](CHANGELOG.md) を参照してください。"
+          fi
+
+          # 複数行の出力を GITHUB_OUTPUT に渡す
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ github.ref_name }}" \
+            --notes "${{ steps.changelog.outputs.notes }}"
