@@ -1,5 +1,9 @@
 # sf-package-xml
 
+> [!NOTE]
+> このリポジトリは Python パッケージ開発・GitHub Actions CI・ブランチ運用などを学ぶための**練習・検証目的**で作成したものです。
+> 本番環境での利用は想定していません。
+
 Salesforce org に存在するすべてのメタデータを網羅した `package.xml` を自動生成する Python ツールです。
 
 ## 機能
