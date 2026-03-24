@@ -1,9 +1,15 @@
 name: Release
 
 # ──────────────────────────────────────────────
-# トリガー: v* 形式のタグが push されたとき
-#   (bump-version.yml が自動的に push するか、
-#    手動で git tag v1.0.0 && git push origin v1.0.0 した場合)
+# トリガー: ユーザーが手動でタグを push したとき
+#
+#   git tag v1.0.0
+#   git push origin v1.0.0
+#
+# 通常のリリースは bump-version.yml (手動実行) を使うこと。
+# bump-version.yml は GITHUB_TOKEN でタグを push するため
+# このワークフローはトリガーされない (GitHub Actions の仕様)。
+# このワークフローはローカルから直接タグを push した場合のみ起動する。
 # ──────────────────────────────────────────────
 on:
   push:
