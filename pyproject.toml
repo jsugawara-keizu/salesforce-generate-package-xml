@@ -27,10 +27,23 @@ sf-package-xml = "sf_package_xml.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[dependency-groups]
-dev = [
-    "pytest>=8.0",
-]
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]  # 行長は強制しない
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true

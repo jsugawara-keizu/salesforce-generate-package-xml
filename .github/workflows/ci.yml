@@ -1,0 +1,72 @@
+name: CI
+
+# ──────────────────────────────────────────────
+# トリガー: main への push と、main への PR 作成・更新時
+# ──────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ────────────────────────────────────────────
+  # ① lint: ruff によるコードスタイルチェック
+  # ────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install "ruff>=0.4"
+
+      - name: Run ruff
+        run: ruff check src/ tests/
+
+  # ────────────────────────────────────────────
+  # ② test: pytest を複数 Python バージョンで実行
+  # ────────────────────────────────────────────
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # 1バージョン失敗しても他のバージョンを継続する
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest -v
+
+  # ────────────────────────────────────────────
+  # ③ type-check: mypy による静的型チェック
+  # ────────────────────────────────────────────
+  type-check:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package and mypy
+        run: pip install -e ".[dev]"
+
+      - name: Run mypy
+        run: mypy src/sf_package_xml/
