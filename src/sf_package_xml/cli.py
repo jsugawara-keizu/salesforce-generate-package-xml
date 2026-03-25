@@ -418,8 +418,9 @@ def main() -> None:
             if not result.is_folder:
                 type_name = result.skipped or next(iter(result.entries), "")
                 count = len(result.entries.get(type_name, []))
-                completed_explicit += 1
-                logger.info(_progress_line(f"[通常] {type_name}", count))
+                with _lock:
+                    completed_explicit += 1
+                    logger.info(_progress_line(f"[通常] {type_name}", count))
 
         logger.info("")
         logger.info("=" * 60)

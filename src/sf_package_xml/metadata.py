@@ -193,18 +193,6 @@ _TRACKED_LIMITS = [
 ]
 
 
-def get_api_usage(target_org: Optional[str]) -> Optional[tuple[int, int]]:
-    """
-    DailyApiRequests の使用数と上限を (used, max) のタプルで返す。
-
-    "sf limits api display" を実行して DailyApiRequests エントリを探す。
-    取得できない場合は None を返す (致命的エラーとは扱わない)。
-    """
-    limits = _fetch_limits(target_org)
-    if limits is None:
-        return None
-    return _extract_usage(limits, "DailyApiRequests")
-
 
 def print_api_usage(label: str, target_org: Optional[str]) -> dict[str, tuple[int, int]]:
     """
