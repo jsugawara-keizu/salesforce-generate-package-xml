@@ -202,6 +202,13 @@ def main() -> None:
         before = len(type_map)
         type_map = _filter_type_map(type_map, args.include_types, args.exclude_types)
         print(f"タイプフィルタ適用: {before} → {len(type_map)} タイプ", flush=True)
+        if not type_map:
+            print(
+                "[ERROR] フィルタ適用後に対象タイプが0件になりました。"
+                " --include-types / --exclude-types の指定を確認してください。",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     metadata_map: dict[str, list[str]] = {}
     skipped: list[str] = []

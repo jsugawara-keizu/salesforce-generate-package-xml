@@ -16,7 +16,7 @@ class TestFilterTypeMap:
 
     def test_no_filter_returns_original(self):
         result = _filter_type_map(self.type_map, [], [])
-        assert result == self.type_map
+        assert result is self.type_map
 
     def test_include_types(self):
         result = _filter_type_map(self.type_map, ["ApexClass", "Workflow"], [])
