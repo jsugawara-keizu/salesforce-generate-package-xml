@@ -51,10 +51,14 @@ def _setup_logging(verbose: bool, log_file: Optional[str]) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     if log_file:
-        log_dir = os.path.dirname(log_file)
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        try:
+            log_dir = os.path.dirname(log_file)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+            handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        except OSError as e:
+            print(f"[ERROR] ログファイルを開けませんでした: {log_file}: {e}", file=sys.stderr)
+            sys.exit(1)
     logging.basicConfig(level=level, format=fmt, datefmt=datefmt,
                         handlers=handlers, force=True)
 

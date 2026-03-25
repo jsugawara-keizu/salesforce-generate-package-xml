@@ -153,10 +153,15 @@ def get_org_api_version(target_org: Optional[str]) -> Optional[str]:
     data = run_sf(["org", "display"], target_org)
     if data is None:
         return None
-    result = data.get("result", {})
-    version = result.get("apiVersion") or result.get("instanceApiVersion")
-    if isinstance(version, str) and version:
-        return version
+    result = data.get("result")
+    if not isinstance(result, dict):
+        return None
+    api_version = result.get("apiVersion")
+    if isinstance(api_version, str) and api_version:
+        return api_version
+    instance_api_version = result.get("instanceApiVersion")
+    if isinstance(instance_api_version, str) and instance_api_version:
+        return instance_api_version
     return None
 
 
@@ -401,6 +406,7 @@ def _process_folder(
         members = list_metadata(xml_name, target_org, folder=folder_name)
         if members is None:
             result.error = True
+            logger.error("[%s] %s のコンテンツ取得に失敗しました。", xml_name, folder_name)
             members = []
         filtered = filter_namespaced(members, exclude_prefixes, exclude_all_ns)
         result.excluded += len(members) - len(filtered)

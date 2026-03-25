@@ -47,3 +47,15 @@ class TestGetOrgApiVersion:
         response = {"status": 0, "result": {"apiVersion": 66}}
         with patch("sf_package_xml.metadata.run_sf", return_value=response):
             assert get_org_api_version(None) is None
+
+    def test_falls_back_to_instance_api_version_when_api_version_is_int(self):
+        # apiVersion が int の場合は instanceApiVersion にフォールバックする
+        response = {"status": 0, "result": {"apiVersion": 66, "instanceApiVersion": "63.0"}}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
+            assert get_org_api_version(None) == "63.0"
+
+    def test_returns_none_when_result_is_null(self):
+        # result キーが存在するが値が null の場合
+        response = {"status": 0, "result": None}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
+            assert get_org_api_version(None) is None
