@@ -8,8 +8,21 @@
 # 使い方:
 #   1. このファイルを .github/workflows/daily-tracking.yml として配置する
 #   2. GitHub Secrets に以下を登録する
-#        SF_AUTH_URL : sfdx auth URL (sf org display --verbose で取得)
-#   3. SFDX_ALIAS を自 org のエイリアスに変更する
+#        SF_CLIENT_ID  : 外部クライアントアプリケーションのクライアントID
+#        SF_JWT_KEY    : JWT署名用秘密鍵 (PEM形式の内容をそのまま登録)
+#        SF_USERNAME   : 連携専用ユーザーのユーザー名
+#   3. SFDX_ALIAS / SF_INSTANCE_URL を自 org の設定に変更する
+#
+# 認証方式について:
+#   外部クライアントアプリケーション + JWT Bearer フローを使用する。
+#   Salesforce 組織の設定により Connected App が利用できない場合、
+#   外部クライアントアプリケーションが代替手段となる。
+#
+# IPアドレス制限について:
+#   GitHub Actions の実行 IP は固定されないため、組織に IP 制限がある場合は
+#   通常の認証ユーザーでは接続できない。
+#   対処法: 連携専用プロファイルを作成し「IPアドレスの制限なし」を設定した上で
+#   そのプロファイルを割り当てた連携専用ユーザーで実行する。
 #
 # 必要な権限:
 #   - 実行ユーザーが Metadata API の読み取り権限を持つこと
@@ -25,7 +38,8 @@ on:
   workflow_dispatch:        # 手動実行にも対応
 
 env:
-  SFDX_ALIAS: my-org       # ← 自分の org エイリアスに変更する
+  SFDX_ALIAS: my-org                              # ← 自分の org エイリアスに変更する
+  SF_INSTANCE_URL: https://test.salesforce.com    # ← Sandbox の場合はこのまま、本番は https://login.salesforce.com
 
 jobs:
   track:
@@ -41,13 +55,18 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli
 
-      # SF_AUTH_URL を使って org を認証
-      - name: Authenticate to Salesforce
+      # JWT認証: 秘密鍵をファイルに書き出してから認証し、直後に削除する
+      - name: Authenticate to Salesforce (JWT)
         run: |
-          echo "${{ secrets.SF_AUTH_URL }}" | sf org login sfdx-url \
-            --sfdx-url-stdin \
+          echo "${{ secrets.SF_JWT_KEY }}" > server.key
+          sf org login jwt \
+            --client-id "${{ secrets.SF_CLIENT_ID }}" \
+            --jwt-key-file server.key \
+            --username "${{ secrets.SF_USERNAME }}" \
+            --instance-url "${{ env.SF_INSTANCE_URL }}" \
             --alias "${{ env.SFDX_ALIAS }}" \
             --set-default
+          rm server.key
 
       # Python と sf-package-xml のインストール
       - uses: actions/setup-python@v6
@@ -68,14 +87,19 @@ jobs:
             --skip-folders
 
       # メタデータを取得
+      # package.xml がメンバー上限超過で分割された場合 (package_01.xml, package_02.xml ...) にも対応する
       - name: Retrieve metadata
         run: |
-          sf project retrieve start \
-            --manifest manifest/package.xml \
-            --target-org "${{ env.SFDX_ALIAS }}" \
-            --output-dir force-app/
+          for manifest in manifest/package*.xml; do
+            echo "Retrieving: ${manifest}"
+            sf project retrieve start \
+              --manifest "${manifest}" \
+              --target-org "${{ env.SFDX_ALIAS }}" \
+              --output-dir force-app/
+          done
 
       # 変更があれば git コミット
+      # stash → pull → stash pop で、Action 実行中の並行 Commit にも対応する
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
@@ -85,6 +109,10 @@ jobs:
             echo "変更なし。コミットをスキップします。"
           else
             DATE=$(date +"%Y-%m-%d")
+            git stash
+            git pull --rebase
+            git stash pop
+            git add manifest/ force-app/
             git commit -m "chore: daily metadata snapshot ${DATE}"
             git push
           fi
