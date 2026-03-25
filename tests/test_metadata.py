@@ -10,15 +10,24 @@ from sf_package_xml.metadata import get_org_api_version
 
 
 class TestGetOrgApiVersion:
-    def _make_response(self, version: str) -> dict:
-        return {"status": 0, "result": {"instanceApiVersion": version}}
+    def test_returns_version_from_api_version_field(self):
+        response = {"status": 0, "result": {"apiVersion": "66.0"}}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
+            assert get_org_api_version(None) == "66.0"
 
-    def test_returns_version_from_org(self):
-        with patch("sf_package_xml.metadata.run_sf", return_value=self._make_response("63.0")):
+    def test_returns_version_from_instance_api_version_field(self):
+        response = {"status": 0, "result": {"instanceApiVersion": "63.0"}}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
             assert get_org_api_version(None) == "63.0"
 
+    def test_api_version_takes_precedence_over_instance_api_version(self):
+        response = {"status": 0, "result": {"apiVersion": "66.0", "instanceApiVersion": "63.0"}}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
+            assert get_org_api_version(None) == "66.0"
+
     def test_returns_version_with_target_org(self):
-        with patch("sf_package_xml.metadata.run_sf", return_value=self._make_response("62.0")):
+        response = {"status": 0, "result": {"apiVersion": "62.0"}}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
             assert get_org_api_version("myOrg") == "62.0"
 
     def test_returns_none_when_run_sf_fails(self):
@@ -30,10 +39,11 @@ class TestGetOrgApiVersion:
             assert get_org_api_version(None) is None
 
     def test_returns_none_when_version_empty_string(self):
-        with patch("sf_package_xml.metadata.run_sf", return_value=self._make_response("")):
+        response = {"status": 0, "result": {"apiVersion": ""}}
+        with patch("sf_package_xml.metadata.run_sf", return_value=response):
             assert get_org_api_version(None) is None
 
     def test_returns_none_when_version_is_not_string(self):
-        response = {"status": 0, "result": {"instanceApiVersion": 62}}
+        response = {"status": 0, "result": {"apiVersion": 66}}
         with patch("sf_package_xml.metadata.run_sf", return_value=response):
             assert get_org_api_version(None) is None

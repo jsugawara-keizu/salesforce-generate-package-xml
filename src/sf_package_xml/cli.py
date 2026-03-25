@@ -4,8 +4,10 @@ CLI エントリーポイント
 
 import argparse
 import json
+import logging
 import os
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -17,7 +19,7 @@ from sf_package_xml.metadata import (
     FOLDER_BASED_TYPES,
     SKIP_TYPES,
     TypeResult,
-    _print_lock,
+    _TRACKED_LIMITS,
     _process_explicit,
     _process_folder,
     fetch_standard_value_set_members,
@@ -25,7 +27,6 @@ from sf_package_xml.metadata import (
     get_org_api_version,
     prefetch_folder_lists,
     print_api_usage,
-    tprint,
 )
 from sf_package_xml.xml_builder import (
     SALESFORCE_RETRIEVE_LIMIT,
@@ -33,6 +34,29 @@ from sf_package_xml.xml_builder import (
     split_metadata_map,
     split_output_paths,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _setup_logging(verbose: bool, log_file: Optional[str]) -> None:
+    """
+    ルートロガーを設定する。
+
+    verbose=True のとき DEBUG レベル、それ以外は INFO レベル。
+    log_file を指定するとファイルにも同時出力する。
+    フォーマット: "YYYY-MM-DD HH:MM:SS LEVEL    メッセージ"
+    """
+    fmt = "%(asctime)s %(levelname)-8s %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+    level = logging.DEBUG if verbose else logging.INFO
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    if log_file:
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+    logging.basicConfig(level=level, format=fmt, datefmt=datefmt,
+                        handlers=handlers, force=True)
 
 
 def _resolve_output_path(output: str, output_dir: Optional[str]) -> str:
@@ -138,7 +162,14 @@ def main() -> None:
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="取得したメンバー名を1件ずつ標準出力に表示する。",
+        help="取得したメンバー名を1件ずつ表示する (DEBUG ログレベルを有効にする)。",
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        default=None,
+        help="ログをファイルにも出力する。指定したパスに追記する。"
+             "例: --log-file logs/run.log",
     )
     parser.add_argument(
         "--exclude-namespace",
@@ -211,6 +242,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # ログ設定 (引数解析の直後に実行)
+    _setup_logging(args.verbose, args.log_file)
+
     _FALLBACK_API_VERSION = "62.0"
 
     target_org: Optional[str] = args.target_org
@@ -219,18 +253,17 @@ def main() -> None:
     else:
         detected = get_org_api_version(target_org)
         if detected:
-            print(f"API バージョンを org から自動取得しました: {detected}", flush=True)
+            logger.info("API バージョンを org から自動取得しました: %s", detected)
             api_version = detected
         else:
-            print(
-                f"  [WARN] API バージョンの自動取得に失敗しました。"
-                f"フォールバック値 {_FALLBACK_API_VERSION} を使用します。",
-                file=sys.stderr,
+            logger.warning(
+                "API バージョンの自動取得に失敗しました。"
+                "フォールバック値 %s を使用します。",
+                _FALLBACK_API_VERSION,
             )
             api_version = _FALLBACK_API_VERSION
     wildcard: bool = args.wildcard
     skip_folders: bool = args.skip_folders
-    verbose: bool = args.verbose
     exclude_all_ns: bool = args.exclude_all_namespaces
     workers: int = args.workers
 
@@ -241,7 +274,7 @@ def main() -> None:
 
     # ① 開始時刻を記録し、API コール数の使用状況を表示
     start_time = time.monotonic()
-    print("API コール数を確認中 ...", flush=True)
+    logger.info("API コール数を確認中 ...")
     usage_before = print_api_usage("開始時", target_org)
 
     # ② 対象 org のメタデータタイプ一覧を取得
@@ -253,7 +286,7 @@ def main() -> None:
 
     # --list-types: タイプ一覧を表示して終了
     if args.list_types:
-        print(f"メタデータタイプ一覧 ({len(type_map)} 件):")
+        logger.info("メタデータタイプ一覧 (%d 件):", len(type_map))
         for name in sorted(type_map.keys()):
             mt = type_map[name]
             markers = []
@@ -262,19 +295,18 @@ def main() -> None:
             if mt.get("suffix") == "settings":
                 markers.append("Settings")
             suffix = f"  [{', '.join(markers)}]" if markers else ""
-            print(f"  {name}{suffix}")
+            logger.info("  %s%s", name, suffix)
         sys.exit(0)
 
     # --include-types / --exclude-types でタイプを絞り込む
     if args.include_types or args.exclude_types:
         before = len(type_map)
         type_map = _filter_type_map(type_map, args.include_types, args.exclude_types)
-        print(f"タイプフィルタ適用: {before} → {len(type_map)} タイプ", flush=True)
+        logger.info("タイプフィルタ適用: %d → %d タイプ", before, len(type_map))
         if not type_map:
-            print(
-                "[ERROR] フィルタ適用後に対象タイプが0件になりました。"
-                " --include-types / --exclude-types の指定を確認してください。",
-                file=sys.stderr,
+            logger.error(
+                "フィルタ適用後に対象タイプが0件になりました。"
+                " --include-types / --exclude-types の指定を確認してください。"
             )
             sys.exit(1)
 
@@ -285,13 +317,13 @@ def main() -> None:
 
     # ③ StandardValueSet を先に取得 (GitHub への HTTP 呼び出し、逐次)
     if "StandardValueSet" in type_map:
-        print("[StandardValueSet] メンバーを取得中 ...", flush=True)
+        logger.info("[StandardValueSet] メンバーを取得中 ...")
         svs_members = fetch_standard_value_set_members()
         svs_filtered = filter_namespaced(svs_members, exclude_prefixes, exclude_all_ns)
         excluded_count += len(svs_members) - len(svs_filtered)
         metadata_map["StandardValueSet"] = svs_filtered
-        if verbose:
-            tprint("\n".join(f"    {m}" for m in svs_filtered), flush=True)
+        for m in svs_filtered:
+            logger.debug("    %s", m)
 
     # ④ --wildcard モード: API 呼び出し不要、即座にマップを構築
     if wildcard:
@@ -303,8 +335,7 @@ def main() -> None:
                 skipped.append(xml_name)
                 continue
             metadata_map.setdefault(xml_name, ["*"])
-            if verbose:
-                tprint(f"[Wildcard] {xml_name}: *", flush=True)
+            logger.debug("[Wildcard] %s: *", xml_name)
 
     else:
         # ⑤ 並列取得モード: タイプを explicit / folder の2グループに分けて並列実行
@@ -318,7 +349,7 @@ def main() -> None:
             in_folder = mt.get("inFolder", False)
             if in_folder or xml_name in FOLDER_BASED_TYPES:
                 if skip_folders:
-                    tprint(f"[FolderBased] {xml_name} をスキップ (--skip-folders)", flush=True)
+                    logger.info("[FolderBased] %s をスキップ (--skip-folders)", xml_name)
                     skipped.append(xml_name)
                 else:
                     ft = FOLDER_BASED_TYPES.get(xml_name, f"{xml_name}Folder")
@@ -328,8 +359,7 @@ def main() -> None:
                 # "sf org list metadata" が空を返すが * で取得可能なため、
                 # API 呼び出しなしで直接 * をセットする。
                 metadata_map[xml_name] = ["*"]
-                if verbose:
-                    tprint(f">> {xml_name} のメンバーを取得しました (Settings タイプのため *)", flush=True)
+                logger.debug("%s: * (Settings タイプ)", xml_name)
             else:
                 explicit_types.append(xml_name)
 
@@ -339,15 +369,18 @@ def main() -> None:
         # フォルダ一覧を事前取得して合計フォルダ数を確定する
         prefetched: dict[str, list[str]] = {}
         if folder_types:
-            print("\nフォルダ一覧を事前取得中 ...", flush=True)
+            logger.info("フォルダ一覧を事前取得中 ...")
             prefetched = prefetch_folder_lists(folder_types, target_org)
         total_folder_items = sum(len(v) for v in prefetched.values())
         completed_folder_items = 0
 
         total_tasks = total_explicit + total_folder_items
 
+        # _on_folder_done はワーカースレッドから呼ばれるため、カウンタ更新にロックを使う
+        _lock = threading.Lock()
+
         def _progress_line(label: str, label_count: int) -> str:
-            """現在の進捗を1行で返す。ロック内から呼ぶこと。"""
+            """現在の進捗を1行で返す。"""
             completed = completed_explicit + completed_folder_items
             pct = completed / total_tasks * 100 if total_tasks else 0
             elapsed = time.monotonic() - start_time
@@ -364,9 +397,9 @@ def main() -> None:
         def _on_folder_done(folder_name: str, count: int) -> None:
             """フォルダ1件のコンテンツ取得完了時に進捗を更新する。"""
             nonlocal completed_folder_items
-            with _print_lock:
+            with _lock:
                 completed_folder_items += 1
-                print(_progress_line(f"[フォルダ] {folder_name}", count), flush=True)
+                logger.info(_progress_line(f"[フォルダ] {folder_name}", count))
 
         def _on_complete(result: TypeResult) -> None:
             """タイプ1件の取得完了時に metadata_map へ反映し、通常タイプの進捗を表示する。"""
@@ -378,25 +411,20 @@ def main() -> None:
                 error_types.append(result.skipped)
             elif result.skipped:
                 skipped.append(result.skipped)
-            if verbose and result.verbose_lines:
-                tprint("\n".join(result.verbose_lines), flush=True)
             if not result.is_folder:
                 type_name = result.skipped or next(iter(result.entries), "")
                 count = len(result.entries.get(type_name, []))
-                with _print_lock:
-                    completed_explicit += 1
-                    print(_progress_line(f"[通常] {type_name}", count), flush=True)
+                completed_explicit += 1
+                logger.info(_progress_line(f"[通常] {type_name}", count))
 
-        print(flush=True)
-        print("=" * 60, flush=True)
-        print(
-            f"  メタデータ取得開始"
-            f"  通常 {total_explicit} タイプ + フォルダ型 {len(folder_types)} タイプ"
-            f" (フォルダ {total_folder_items} 件)"
-            f"  {workers} ワーカー",
-            flush=True,
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info(
+            "  メタデータ取得開始"
+            "  通常 %d タイプ + フォルダ型 %d タイプ (フォルダ %d 件)  %d ワーカー",
+            total_explicit, len(folder_types), total_folder_items, workers,
         )
-        print("=" * 60, flush=True)
+        logger.info("=" * 60)
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures: list = []
@@ -406,7 +434,7 @@ def main() -> None:
                 f = executor.submit(
                     _process_folder,
                     xml_name, folder_type, prefetched.get(xml_name, []),
-                    target_org, exclude_prefixes, exclude_all_ns, verbose,
+                    target_org, exclude_prefixes, exclude_all_ns,
                     _on_folder_done,
                 )
                 futures.append(f)
@@ -414,7 +442,7 @@ def main() -> None:
             for xml_name in explicit_types:
                 f = executor.submit(
                     _process_explicit,
-                    xml_name, target_org, exclude_prefixes, exclude_all_ns, verbose,
+                    xml_name, target_org, exclude_prefixes, exclude_all_ns,
                 )
                 futures.append(f)
 
@@ -433,17 +461,20 @@ def main() -> None:
         output_paths = [output_path]
     else:
         output_paths = split_output_paths(output_path, len(chunks))
-        print(f"\n[INFO] メンバー総数 {total_members} 件が上限 {max_members} を超えるため "
-              f"{len(chunks)} ファイルに分割します。", flush=True)
+        logger.info(
+            "メンバー総数 %d 件が上限 %d を超えるため %d ファイルに分割します。",
+            total_members, max_members, len(chunks),
+        )
 
     # ⑦ 各チャンクを package.xml として書き出し
-    print("\npackage.xml を生成中 ...", flush=True)
+    logger.info("package.xml を生成中 ...")
     for i, (chunk, path) in enumerate(zip(chunks, output_paths), 1):
         xml_content = build_package_xml(chunk, api_version)
         with open(path, "w", encoding="utf-8") as fp:
             fp.write(xml_content)
         chunk_total = sum(len(v) for v in chunk.values())
-        print(f"  [{i}/{len(chunks)}] {path}  ({len(chunk)} タイプ / {chunk_total} メンバー)")
+        logger.info("  [%d/%d] %s  (%d タイプ / %d メンバー)",
+                    i, len(chunks), path, len(chunk), chunk_total)
 
     # ⑧ --summary-json が指定された場合はサマリを JSON ファイルに書き出す
     if args.summary_json:
@@ -454,41 +485,43 @@ def main() -> None:
             os.makedirs(summary_dir, exist_ok=True)
         with open(summary_path, "w", encoding="utf-8") as fp:
             json.dump(summary, fp, ensure_ascii=False, indent=2)
-        print(f"\nサマリを出力しました: {summary_path}", flush=True)
+        logger.info("サマリを出力しました: %s", summary_path)
 
     # 完了サマリ
     total_elapsed = time.monotonic() - start_time
-    print(flush=True)
-    print("=" * 60, flush=True)
-    print(f"  完了  ({total_elapsed:.1f}s)")
-    print("=" * 60, flush=True)
-    print(f"  メタデータタイプ数 : {len(metadata_map)}")
-    print(f"  メンバー総数       : {total_members}")
-    print(f"  出力ファイル数     : {len(chunks)}")
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("  完了  (%.1fs)", total_elapsed)
+    logger.info("=" * 60)
+    logger.info("  メタデータタイプ数 : %d", len(metadata_map))
+    logger.info("  メンバー総数       : %d", total_members)
+    logger.info("  出力ファイル数     : %d", len(chunks))
     if excluded_count:
         ns_label = "すべての名前空間" if exclude_all_ns else ", ".join(args.exclude_namespace)
-        print(f"  名前空間除外件数  : {excluded_count} ({ns_label})")
+        logger.info("  名前空間除外件数  : %d (%s)", excluded_count, ns_label)
 
-    print(f"\n取得済みメタデータタイプ ({len(metadata_map)}件):")
+    logger.info("取得済みメタデータタイプ (%d件):", len(metadata_map))
     for name in sorted(metadata_map):
         count = len(metadata_map[name])
-        print(f"  {name} ({count}件)")
+        logger.info("  %s (%d件)", name, count)
 
     if skipped:
-        print(f"\nスキップ / メンバー0件 ({len(skipped)}件):")
+        logger.info("スキップ / メンバー0件 (%d件):", len(skipped))
         for name in sorted(skipped):
-            print(f"  {name}")
+            logger.info("  %s", name)
 
     if error_types:
-        print(f"\n[ERROR] 取得失敗タイプ ({len(error_types)}件):", file=sys.stderr)
+        logger.error("取得失敗タイプ (%d件):", len(error_types))
         for name in sorted(error_types):
-            print(f"  {name}", file=sys.stderr)
+            logger.error("  %s", name)
 
-    print("\nAPI コール数を確認中 ...", flush=True)
+    logger.info("API コール数を確認中 ...")
     usage_after = print_api_usage("終了時", target_org)
     if usage_before and usage_after:
-        consumed = usage_after[0] - usage_before[0]
-        print(f"  今回の消費数     : {consumed:,}")
+        for limit_name, display_name in _TRACKED_LIMITS:
+            if limit_name in usage_before and limit_name in usage_after:
+                consumed = usage_after[limit_name][0] - usage_before[limit_name][0]
+                logger.info("  今回の消費数 [%s]: %s", display_name, f"{consumed:,}")
 
     # 終了コード
     #   0: 完全成功
