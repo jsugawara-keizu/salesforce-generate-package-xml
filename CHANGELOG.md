@@ -6,7 +6,27 @@
 
 ## [Unreleased]
 
+### 変更
+
+- `_TRACKED_LIMITS` / `_process_explicit` / `_process_folder` のアンダースコアプレフィックスを削除 (public シンボルとして命名を統一)
+
+### 修正
+
+- CHANGELOG.md の `[1.0.0]` リンクが重複していたバグを修正
+
 ## [1.0.1] - 2026-03-25
+
+### 追加
+
+- `docs/examples/daily-tracking.yml` を実運用に基づき改善
+  - 認証方式を外部クライアントアプリケーション + JWT Bearer フローに変更
+  - IP アドレス制限の回避方法 (連携専用プロファイル/ユーザー) を注記
+  - `git stash → pull → stash pop` で並行コミットに対応
+  - `package*.xml` を `for` ループで retrieve し、分割ファイルに対応
+
+### 修正
+
+- v1.0.0 の CHANGELOG エントリが空だったため内容を追記
 
 ## [1.0.0] - 2026-03-25
 
