@@ -49,8 +49,15 @@ jobs:
       - name: Install package and dev dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run pytest
-        run: pytest -v
+      - name: Run pytest with coverage
+        run: pytest -v --cov-report=xml
+
+      - name: Upload coverage summary
+        if: matrix.python-version == '3.12'
+        run: |
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          pip install coverage 2>/dev/null
+          coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
 
   # ────────────────────────────────────────────
   # ③ type-check: mypy による静的型チェック
