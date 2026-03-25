@@ -3,9 +3,12 @@ CLI エントリーポイント
 """
 
 import argparse
+import json
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from typing import Optional
 
 from sf_package_xml.filters import filter_namespaced
@@ -29,6 +32,49 @@ from sf_package_xml.xml_builder import (
     split_metadata_map,
     split_output_paths,
 )
+
+
+def _resolve_output_path(output: str, output_dir: Optional[str]) -> str:
+    """
+    --output-dir が指定された場合、output のファイル名部分を output_dir に移動する。
+
+    例:
+        _resolve_output_path("package.xml", "manifest/")  -> "manifest/package.xml"
+        _resolve_output_path("out/pkg.xml", "manifest/")  -> "manifest/pkg.xml"
+        _resolve_output_path("package.xml", None)          -> "package.xml"
+    """
+    if output_dir:
+        return os.path.join(output_dir, os.path.basename(output))
+    return output
+
+
+def _build_summary(
+    api_version: str,
+    target_org: Optional[str],
+    metadata_map: dict[str, list[str]],
+    output_paths: list[str],
+) -> dict:
+    """
+    実行結果のサマリ辞書を構築する。--summary-json オプションで JSON ファイルに書き出す。
+
+    フィールド:
+        generated_at  : UTC 生成日時 (ISO 8601)
+        api_version   : 使用した Metadata API バージョン
+        target_org    : 対象 org (未指定時は "default")
+        total_types   : 取得できたメタデータタイプ数
+        total_members : 取得できたメンバー総数
+        output_files  : 生成した package.xml のパスリスト
+        types         : タイプ名 → メンバー数 の辞書 (ソート済み)
+    """
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "api_version": api_version,
+        "target_org": target_org or "default",
+        "total_types": len(metadata_map),
+        "total_members": sum(len(v) for v in metadata_map.values()),
+        "output_files": output_paths,
+        "types": {name: len(members) for name, members in sorted(metadata_map.items())},
+    }
 
 
 def _filter_type_map(
@@ -140,6 +186,22 @@ def main() -> None:
         "--list-types",
         action="store_true",
         help="org のメタデータタイプ一覧を表示して終了する。package.xml は生成しない。",
+    )
+    parser.add_argument(
+        "--output-dir",
+        metavar="DIR",
+        default=None,
+        help="出力先ディレクトリを指定する。--output のファイル名はそのまま使用する。"
+             "指定したディレクトリが存在しない場合は自動作成する。"
+             "例: --output-dir manifest/",
+    )
+    parser.add_argument(
+        "--summary-json",
+        metavar="PATH",
+        default=None,
+        help="実行結果のサマリ (タイプ別メンバー数・生成日時等) を JSON ファイルに出力する。"
+             "日次追跡で前回との差分比較に使用できる。"
+             "例: --summary-json summary.json",
     )
     args = parser.parse_args()
 
@@ -358,7 +420,9 @@ def main() -> None:
     max_members: int = args.max_members
     chunks = split_metadata_map(metadata_map, max_members)
 
-    output_path: str = args.output
+    output_path: str = _resolve_output_path(args.output, args.output_dir)
+    if args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
     if len(chunks) == 1:
         output_paths = [output_path]
     else:
@@ -374,6 +438,17 @@ def main() -> None:
             fp.write(xml_content)
         chunk_total = sum(len(v) for v in chunk.values())
         print(f"  [{i}/{len(chunks)}] {path}  ({len(chunk)} タイプ / {chunk_total} メンバー)")
+
+    # ⑧ --summary-json が指定された場合はサマリを JSON ファイルに書き出す
+    if args.summary_json:
+        summary = _build_summary(api_version, target_org, metadata_map, output_paths)
+        summary_path = args.summary_json
+        summary_dir = os.path.dirname(summary_path)
+        if summary_dir:
+            os.makedirs(summary_dir, exist_ok=True)
+        with open(summary_path, "w", encoding="utf-8") as fp:
+            json.dump(summary, fp, ensure_ascii=False, indent=2)
+        print(f"\nサマリを出力しました: {summary_path}", flush=True)
 
     # 完了サマリ
     total_elapsed = time.monotonic() - start_time
