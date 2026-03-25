@@ -19,9 +19,9 @@ from sf_package_xml.metadata import (
     FOLDER_BASED_TYPES,
     SKIP_TYPES,
     TypeResult,
-    _TRACKED_LIMITS,
-    _process_explicit,
-    _process_folder,
+    TRACKED_LIMITS,
+    process_explicit,
+    process_folder,
     fetch_standard_value_set_members,
     get_metadata_types,
     get_org_api_version,
@@ -129,6 +129,7 @@ def _filter_type_map(
 
 
 def main() -> None:
+    """sf-package-xml コマンドのエントリーポイント。"""
     parser = argparse.ArgumentParser(
         description="Salesforce org のすべてのメタデータを対象とする package.xml を生成します。"
     )
@@ -437,7 +438,7 @@ def main() -> None:
             # フォルダ型を先に submit する (処理時間が長いため早期に開始する)
             for xml_name, folder_type in folder_types:
                 f = executor.submit(
-                    _process_folder,
+                    process_folder,
                     xml_name, folder_type, prefetched.get(xml_name, []),
                     target_org, exclude_prefixes, exclude_all_ns,
                     _on_folder_done,
@@ -446,7 +447,7 @@ def main() -> None:
 
             for xml_name in explicit_types:
                 f = executor.submit(
-                    _process_explicit,
+                    process_explicit,
                     xml_name, target_org, exclude_prefixes, exclude_all_ns,
                 )
                 futures.append(f)
@@ -523,7 +524,7 @@ def main() -> None:
     logger.info("API コール数を確認中 ...")
     usage_after = print_api_usage("終了時", target_org)
     if usage_before and usage_after:
-        for limit_name, display_name in _TRACKED_LIMITS:
+        for limit_name, display_name in TRACKED_LIMITS:
             if limit_name in usage_before and limit_name in usage_after:
                 consumed = usage_after[limit_name][0] - usage_before[limit_name][0]
                 logger.info("  今回の消費数 [%s]: %s", display_name, f"{consumed:,}")

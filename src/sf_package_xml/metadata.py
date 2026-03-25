@@ -187,7 +187,7 @@ def _extract_usage(limits: list, name: str) -> Optional[tuple[int, int]]:
 # 表示対象の API 制限: (limit_name, 表示名) の順で表示する
 # DailyMetadataApiRequests は org エディションによって存在しない場合がある。
 # 存在しない limit は print_api_usage が自動的に非表示にする。
-_TRACKED_LIMITS = [
+TRACKED_LIMITS = [
     ("DailyApiRequests", "REST API"),
     ("DailyMetadataApiRequests", "Metadata API"),
 ]
@@ -206,7 +206,7 @@ def print_api_usage(label: str, target_org: Optional[str]) -> dict[str, tuple[in
         logger.warning("API コール数の取得に失敗しました。")
         return {}
     result: dict[str, tuple[int, int]] = {}
-    for limit_name, display_name in _TRACKED_LIMITS:
+    for limit_name, display_name in TRACKED_LIMITS:
         usage = _extract_usage(limits, limit_name)
         if usage is not None:
             used, maximum = usage
@@ -327,7 +327,7 @@ class TypeResult:
     error: bool = False
 
 
-def _process_explicit(
+def process_explicit(
     xml_name: str,
     target_org: Optional[str],
     exclude_prefixes: tuple[str, ...],
@@ -358,7 +358,7 @@ def _process_explicit(
     return result
 
 
-def _process_folder(
+def process_folder(
     xml_name: str,
     folder_type: str,
     folder_members: list[str],
