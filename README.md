@@ -34,10 +34,24 @@ Salesforce org に存在するすべてのメタデータを網羅した `packag
 [pipx](https://pipx.pypa.io/) は CLI ツール専用の隔離環境を自動管理するツールです。
 SFDXプロジェクトを汚さずにグローバルで使えるため、通常の利用にはこちらを推奨します。
 
+**macOS**
+
 ```bash
 # pipx 自体のインストール (未インストールの場合)
 brew install pipx
 pipx ensurepath
+
+# sf-package-xml をインストール
+pipx install git+https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
+```
+
+**Windows (PowerShell)**
+
+```powershell
+# pipx 自体のインストール (未インストールの場合)
+pip install pipx
+pipx ensurepath
+# ターミナルを再起動して PATH を反映
 
 # sf-package-xml をインストール
 pipx install git+https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
@@ -59,14 +73,23 @@ pipx upgrade sf-package-xml
 
 プロジェクトの仮想環境に組み込む場合や、開発目的の場合はこちら。
 
+**macOS / Linux**
+
 ```bash
-# リポジトリをクローン
 git clone https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
 cd salesforce-generate-package-xml
-
-# 仮想環境を作成してインストール
 python3 -m venv .venv
 source .venv/bin/activate
+pip install -e .
+```
+
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
+cd salesforce-generate-package-xml
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -e .
 ```
 
@@ -106,11 +129,13 @@ sf-package-xml -o myOrg --max-members 5000
 | オプション | デフォルト | 説明 |
 |---|---|---|
 | `-o`, `--target-org` | デフォルト org | 対象 org のエイリアスまたはユーザー名 |
-| `-v`, `--api-version` | `62.0` | Metadata API バージョン |
+| `-v`, `--api-version` | org から自動取得 | Metadata API バージョン |
 | `--output` | `package.xml` | 出力ファイルパス |
+| `--output-dir DIR` | - | 出力先ディレクトリ。指定時は `--output` のファイル名をそのまま使用 |
 | `--wildcard` | - | 全タイプを `*` で出力する高速モード |
 | `--skip-folders` | - | フォルダ型メタデータ 4タイプを除外 |
-| `--verbose` | - | 取得したメンバー名を1件ずつ表示 |
+| `--verbose` | - | 取得したメンバー名を1件ずつ表示 (DEBUG ログレベル) |
+| `--log-file PATH` | - | ログをファイルにも出力する |
 | `--exclude-namespace NS` | - | 除外する名前空間プレフィックス (複数指定可) |
 | `--exclude-all-namespaces` | - | 全名前空間付きメンバーを除外 |
 | `--workers N` | `8` | 並列ワーカー数 |
@@ -118,6 +143,7 @@ sf-package-xml -o myOrg --max-members 5000
 | `--include-types TYPE` | - | 取得対象タイプを指定 (複数指定可)。指定したタイプのみ取得 |
 | `--exclude-types TYPE` | - | 除外するタイプを指定 (複数指定可)。`--skip-folders` の汎用版 |
 | `--list-types` | - | org のメタデータタイプ一覧を表示して終了 |
+| `--summary-json PATH` | - | 実行結果のサマリ (タイプ別メンバー数・生成日時等) を JSON に出力 |
 
 ## GitHub Actions との連携
 
