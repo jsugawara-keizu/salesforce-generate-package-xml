@@ -31,6 +31,28 @@ from sf_package_xml.xml_builder import (
 )
 
 
+def _filter_type_map(
+    type_map: dict[str, dict],
+    include_types: list[str],
+    exclude_types: list[str],
+) -> dict[str, dict]:
+    """
+    --include-types / --exclude-types に基づいて type_map を絞り込む。
+
+    - include_types が指定された場合: そのタイプのみを残す
+    - exclude_types が指定された場合: そのタイプを除外する
+    - 両方指定された場合: include で絞り込んだ後に exclude を適用する
+    """
+    result = type_map
+    if include_types:
+        include_set = set(include_types)
+        result = {k: v for k, v in result.items() if k in include_set}
+    if exclude_types:
+        exclude_set = set(exclude_types)
+        result = {k: v for k, v in result.items() if k not in exclude_set}
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Salesforce org のすべてのメタデータを対象とする package.xml を生成します。"
@@ -96,6 +118,29 @@ def main() -> None:
         help=f"1ファイルあたりの最大メンバー数 (デフォルト: {SALESFORCE_RETRIEVE_LIMIT})。"
              "超過時は package_01.xml, package_02.xml ... に自動分割する。",
     )
+    parser.add_argument(
+        "--include-types",
+        nargs="+",
+        metavar="TYPE",
+        default=[],
+        help="取得対象とするメタデータタイプを指定する (複数指定可)。"
+             "指定した場合はこれらのタイプのみを取得する。"
+             "例: --include-types ApexClass CustomObject",
+    )
+    parser.add_argument(
+        "--exclude-types",
+        nargs="+",
+        metavar="TYPE",
+        default=[],
+        help="除外するメタデータタイプを指定する (複数指定可)。"
+             "--skip-folders の汎用版。"
+             "例: --exclude-types Report Dashboard AnalyticsSnapshot",
+    )
+    parser.add_argument(
+        "--list-types",
+        action="store_true",
+        help="org のメタデータタイプ一覧を表示して終了する。package.xml は生成しない。",
+    )
     args = parser.parse_args()
 
     _FALLBACK_API_VERSION = "62.0"
@@ -137,6 +182,26 @@ def main() -> None:
         sys.exit(1)
 
     type_map: dict[str, dict] = {t["xmlName"]: t for t in all_types if t.get("xmlName")}
+
+    # --list-types: タイプ一覧を表示して終了
+    if args.list_types:
+        print(f"メタデータタイプ一覧 ({len(type_map)} 件):")
+        for name in sorted(type_map.keys()):
+            mt = type_map[name]
+            markers = []
+            if mt.get("inFolder") or name in FOLDER_BASED_TYPES:
+                markers.append("フォルダ型")
+            if mt.get("suffix") == "settings":
+                markers.append("Settings")
+            suffix = f"  [{', '.join(markers)}]" if markers else ""
+            print(f"  {name}{suffix}")
+        sys.exit(0)
+
+    # --include-types / --exclude-types でタイプを絞り込む
+    if args.include_types or args.exclude_types:
+        before = len(type_map)
+        type_map = _filter_type_map(type_map, args.include_types, args.exclude_types)
+        print(f"タイプフィルタ適用: {before} → {len(type_map)} タイプ", flush=True)
 
     metadata_map: dict[str, list[str]] = {}
     skipped: list[str] = []
