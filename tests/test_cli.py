@@ -24,7 +24,7 @@ class TestFilterTypeMap:
 
     def test_include_single_type(self):
         result = _filter_type_map(self.type_map, ["ApexClass"], [])
-        assert list(result.keys()) == ["ApexClass"]
+        assert set(result.keys()) == {"ApexClass"}
 
     def test_include_nonexistent_type(self):
         result = _filter_type_map(self.type_map, ["NonExistent"], [])
