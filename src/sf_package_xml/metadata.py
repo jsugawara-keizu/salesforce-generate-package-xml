@@ -3,9 +3,9 @@ Salesforce CLI ラッパーおよびメタデータ取得ロジック
 """
 
 import json
+import logging
 import subprocess
 import sys
-import threading
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -13,15 +13,7 @@ from typing import Callable, Optional
 
 from sf_package_xml.filters import filter_namespaced
 
-
-# スレッド間で標準出力が混在しないようにするロック
-_print_lock = threading.Lock()
-
-
-def tprint(*args, **kwargs) -> None:
-    """スレッドセーフな print。複数スレッドからの出力が行単位で混在しないようにする。"""
-    with _print_lock:
-        print(*args, **kwargs)
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -54,18 +46,18 @@ def fetch_standard_value_set_members() -> list[str]:
     取得失敗 (ネットワークエラー / JSON 不正 / fullnames が空) の場合は
     エラーメッセージを出力してスクリプトを終了する。
     """
-    print("  stdValueSetRegistry.json を取得中 ...", flush=True)
+    logger.info("stdValueSetRegistry.json を取得中 ...")
     try:
         with urllib.request.urlopen(_STD_VALUE_SET_URL, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         members = data.get("fullnames", [])
         if not members:
             raise ValueError("fullnames キーが空")
-        print(f"  -> {len(members)} 件取得", flush=True)
+        logger.info("StandardValueSet: %d 件取得", len(members))
         return members
     except Exception as e:
-        print(f"[ERROR] stdValueSetRegistry.json の取得に失敗しました: {e}", file=sys.stderr)
-        print(f"  取得先: {_STD_VALUE_SET_URL}", file=sys.stderr)
+        logger.error("stdValueSetRegistry.json の取得に失敗しました: %s", e)
+        logger.error("取得先: %s", _STD_VALUE_SET_URL)
         sys.exit(1)
 
 
@@ -125,30 +117,29 @@ def run_sf(
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            tprint(f"  [ERROR] JSON 解析失敗: {' '.join(cmd)}", file=sys.stderr)
+            logger.error("JSON 解析失敗: %s", " ".join(cmd))
             if result.stderr:
-                tprint(f"  stderr: {result.stderr[:200]}", file=sys.stderr)
+                logger.error("stderr: %s", result.stderr[:200])
             return None
 
         # スロットルエラーを検出してリトライ
         msg = data.get("message") or data.get("name") or ""
         if any(kw in msg for kw in _THROTTLE_KEYWORDS):
             wait = 2 ** (attempt + 1)  # 2s → 4s → 8s
-            tprint(
-                f"  [RETRY] スロットル検出 ({msg[:60]}), "
-                f"{wait}s 後にリトライ ({attempt + 1}/{max_retries}): {' '.join(args[:3])}",
-                file=sys.stderr,
+            logger.warning(
+                "スロットル検出 (%s), %ds 後にリトライ (%d/%d): %s",
+                msg[:60], wait, attempt + 1, max_retries, " ".join(args[:3]),
             )
             time.sleep(wait)
             continue
 
         # status != 0 でも result が返る場合 (警告付き成功) があるため警告のみに留める
         if data.get("status") not in (0, None) and "result" not in data:
-            tprint(f"  [WARN] {msg or 'Unknown error'}", file=sys.stderr)
+            logger.warning("%s", msg or "Unknown error")
 
         return data
 
-    tprint(f"  [ERROR] {max_retries} 回リトライ後も失敗: {' '.join(args[:3])}", file=sys.stderr)
+    logger.error("%d 回リトライ後も失敗: %s", max_retries, " ".join(args[:3]))
     return None
 
 
@@ -162,47 +153,68 @@ def get_org_api_version(target_org: Optional[str]) -> Optional[str]:
     data = run_sf(["org", "display"], target_org)
     if data is None:
         return None
-    version = data.get("result", {}).get("instanceApiVersion")
-    if isinstance(version, str) and version:
-        return version
+    result = data.get("result")
+    if not isinstance(result, dict):
+        return None
+    api_version = result.get("apiVersion")
+    if isinstance(api_version, str) and api_version:
+        return api_version
+    instance_api_version = result.get("instanceApiVersion")
+    if isinstance(instance_api_version, str) and instance_api_version:
+        return instance_api_version
     return None
 
 
-def get_api_usage(target_org: Optional[str]) -> Optional[tuple[int, int]]:
-    """
-    DailyApiRequests の使用数と上限を (used, max) のタプルで返す。
-
-    "sf limits api display" を実行して DailyApiRequests エントリを探す。
-    取得できない場合は None を返す (致命的エラーとは扱わない)。
-    """
+def _fetch_limits(target_org: Optional[str]) -> Optional[list]:
+    """sf limits api display を実行し、limits リストを返す。失敗時は None。"""
     data = run_sf(["limits", "api", "display"], target_org)
     if data is None:
         return None
     result = data.get("result") or []
-    if not isinstance(result, list):
-        return None
-    for entry in result:
-        if entry.get("name") == "DailyApiRequests":
+    return result if isinstance(result, list) else None
+
+
+def _extract_usage(limits: list, name: str) -> Optional[tuple[int, int]]:
+    """limits リストから指定名のエントリを探して (used, max) を返す。"""
+    for entry in limits:
+        if entry.get("name") == name:
             maximum = entry.get("max", 0)
             remaining = entry.get("remaining", 0)
-            used = maximum - remaining
-            return used, maximum
+            return maximum - remaining, maximum
     return None
 
 
-def print_api_usage(label: str, target_org: Optional[str]) -> Optional[tuple[int, int]]:
+# 表示対象の API 制限: (limit_name, 表示名) の順で表示する
+# DailyMetadataApiRequests は org エディションによって存在しない場合がある。
+# 存在しない limit は print_api_usage が自動的に非表示にする。
+_TRACKED_LIMITS = [
+    ("DailyApiRequests", "REST API"),
+    ("DailyMetadataApiRequests", "Metadata API"),
+]
+
+
+
+def print_api_usage(label: str, target_org: Optional[str]) -> dict[str, tuple[int, int]]:
     """
-    API コール数を取得して表示し、(used, max) タプルを返す。
-    取得失敗時は警告のみ表示して None を返す。
+    REST API / Metadata API のコール数を取得して表示する。
+
+    {limit_name: (used, max)} の辞書を返す。
+    取得失敗時は警告のみ表示して空辞書を返す。
     """
-    usage = get_api_usage(target_org)
-    if usage is None:
-        print("  [WARN] API コール数の取得に失敗しました。", file=sys.stderr)
-        return None
-    used, maximum = usage
-    pct = used / maximum * 100 if maximum else 0
-    print(f"  {label}: {used:,} / {maximum:,}  ({pct:.1f}%)")
-    return usage
+    limits = _fetch_limits(target_org)
+    if limits is None:
+        logger.warning("API コール数の取得に失敗しました。")
+        return {}
+    result: dict[str, tuple[int, int]] = {}
+    for limit_name, display_name in _TRACKED_LIMITS:
+        usage = _extract_usage(limits, limit_name)
+        if usage is not None:
+            used, maximum = usage
+            pct = used / maximum * 100 if maximum else 0
+            logger.info("%s [%s]: %s / %s  (%.1f%%)",
+                        label, display_name, f"{used:,}", f"{maximum:,}", pct)
+            result[limit_name] = usage
+    return result
 
 
 def get_metadata_types(target_org: Optional[str]) -> list[dict]:
@@ -212,10 +224,10 @@ def get_metadata_types(target_org: Optional[str]) -> list[dict]:
     "sf org list metadata-types" を実行し、metadataObjects 配列を取得する。
     各要素は xmlName / inFolder / suffix 等のプロパティを持つ dict。
     """
-    print("メタデータタイプ一覧を取得中 ...", flush=True)
+    logger.info("メタデータタイプ一覧を取得中 ...")
     data = run_sf(["org", "list", "metadata-types"], target_org)
     if data is None:
-        print("[ERROR] メタデータタイプの取得に失敗しました。", file=sys.stderr)
+        logger.error("メタデータタイプの取得に失敗しました。")
         return []
 
     # SF CLI のバージョンによって result の構造が異なる場合があるため両方を試みる
@@ -224,10 +236,10 @@ def get_metadata_types(target_org: Optional[str]) -> list[dict]:
         or data.get("result", [])
     )
     if not isinstance(objects, list):
-        print("[ERROR] メタデータタイプの取得に失敗しました。", file=sys.stderr)
+        logger.error("メタデータタイプの取得に失敗しました。")
         return []
 
-    print(f"  取得済みタイプ数: {len(objects)}")
+    logger.info("取得済みタイプ数: %d", len(objects))
     return objects
 
 
@@ -282,13 +294,13 @@ def prefetch_folder_lists(
     """
     result: dict[str, list[str]] = {}
     for xml_name, folder_type in folder_types:
-        print(f"  フォルダ一覧を取得中 ({folder_type}) ...", flush=True)
+        logger.info("フォルダ一覧を取得中 (%s) ...", folder_type)
         folders = list_metadata(folder_type, target_org)
         if folders is None:
-            print(f"  [ERROR] {folder_type} のフォルダ一覧取得に失敗しました。", file=sys.stderr)
+            logger.error("%s のフォルダ一覧取得に失敗しました。", folder_type)
             folders = []
         result[xml_name] = folders
-        print(f"    -> {len(folders)} フォルダ")
+        logger.info("  -> %d フォルダ", len(folders))
     return result
 
 
@@ -301,18 +313,16 @@ class TypeResult:
     """
     1タイプ分の取得結果をまとめるデータクラス。
 
-    entries       : metadata_map に追加するエントリ (タイプ名 → メンバーリスト)。
-                    フォルダ型の場合は folder_type と content_type の2エントリになる。
-    excluded      : 名前空間除外で除いたメンバー数。
-    skipped       : メンバーが0件のためスキップしたタイプ名 (該当なければ空文字)。
-    verbose_lines : --verbose 表示用の行リスト。
-    is_folder     : フォルダ型タイプの結果かどうか。進捗表示の分岐に使用する。
-    error         : True = API 呼び出し失敗 (正常な 0件 とは区別する)
+    entries   : metadata_map に追加するエントリ (タイプ名 → メンバーリスト)。
+                フォルダ型の場合は folder_type と content_type の2エントリになる。
+    excluded  : 名前空間除外で除いたメンバー数。
+    skipped   : メンバーが0件のためスキップしたタイプ名 (該当なければ空文字)。
+    is_folder : フォルダ型タイプの結果かどうか。進捗表示の分岐に使用する。
+    error     : True = API 呼び出し失敗 (正常な 0件 とは区別する)
     """
     entries: dict[str, list[str]] = field(default_factory=dict)
     excluded: int = 0
     skipped: str = ""
-    verbose_lines: list[str] = field(default_factory=list)
     is_folder: bool = False
     error: bool = False
 
@@ -322,7 +332,6 @@ def _process_explicit(
     target_org: Optional[str],
     exclude_prefixes: tuple[str, ...],
     exclude_all_ns: bool,
-    verbose: bool,
 ) -> TypeResult:
     """通常タイプ1件のメンバーを取得して TypeResult を返す。並列実行される。"""
     result = TypeResult()
@@ -330,13 +339,11 @@ def _process_explicit(
     if members is None:
         result.error = True
         result.skipped = xml_name
-        if verbose:
-            result.verbose_lines = [f">> {xml_name} [ERROR] メンバー取得失敗"]
+        logger.debug("[ERROR] %s のメンバー取得失敗", xml_name)
         return result
     if not members:
         result.skipped = xml_name
-        if verbose:
-            result.verbose_lines = [f">> {xml_name} のメンバーを取得しました (0件)"]
+        logger.debug("%s: 0件", xml_name)
         return result
 
     filtered = filter_namespaced(members, exclude_prefixes, exclude_all_ns)
@@ -345,11 +352,9 @@ def _process_explicit(
         result.entries[xml_name] = filtered
     else:
         result.skipped = xml_name
-    if verbose:
-        result.verbose_lines = (
-            [f">> {xml_name} のメンバーを取得しました ({len(filtered)}件)"]
-            + [f"    {m}" for m in filtered]
-        )
+    logger.debug("%s: %d 件取得", xml_name, len(filtered))
+    for m in filtered:
+        logger.debug("    %s", m)
     return result
 
 
@@ -360,7 +365,6 @@ def _process_folder(
     target_org: Optional[str],
     exclude_prefixes: tuple[str, ...],
     exclude_all_ns: bool,
-    verbose: bool,
     on_folder_done: Callable[[str, int], None],
 ) -> TypeResult:
     """
@@ -370,7 +374,7 @@ def _process_folder(
     各フォルダのコンテンツ取得が完了するたびに on_folder_done(folder_name, count) を
     呼び出すことで、フォルダ単位の進捗をメインスレッドに通知する。
     """
-    tprint(f"[FolderBased] {xml_name} ({len(folder_members)} フォルダ) 取得開始", flush=True)
+    logger.info("[FolderBased] %s (%d フォルダ) 取得開始", xml_name, len(folder_members))
     result = TypeResult(is_folder=True)
 
     if not folder_members:
@@ -381,9 +385,8 @@ def _process_folder(
     filtered_folders = filter_namespaced(folder_members, exclude_prefixes, exclude_all_ns)
     result.excluded += len(folder_members) - len(filtered_folders)
     result.entries[folder_type] = filtered_folders
-    if verbose:
-        for m in filtered_folders:
-            tprint(f"    [{folder_type}] {m}", flush=True)
+    for m in filtered_folders:
+        logger.debug("  [%s] %s", folder_type, m)
 
     # 各フォルダのコンテンツを逐次取得
     content_members: list[str] = []
@@ -391,15 +394,14 @@ def _process_folder(
         members = list_metadata(xml_name, target_org, folder=folder_name)
         if members is None:
             result.error = True
+            logger.error("[%s] %s のコンテンツ取得に失敗しました。", xml_name, folder_name)
             members = []
         filtered = filter_namespaced(members, exclude_prefixes, exclude_all_ns)
         result.excluded += len(members) - len(filtered)
         content_members.extend(filtered)
-        if verbose:
-            with _print_lock:
-                print(f">> [{xml_name}] {folder_name} のメンバーを取得しました ({len(filtered)}件)")
-                for m in filtered:
-                    print(f"    {m}")
+        logger.debug("[%s] %s: %d 件", xml_name, folder_name, len(filtered))
+        for m in filtered:
+            logger.debug("    %s", m)
         on_folder_done(folder_name, len(filtered))
 
     if content_members:
