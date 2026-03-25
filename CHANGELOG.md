@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-03-25
+
 ### 変更
 
 - `_TRACKED_LIMITS` / `_process_explicit` / `_process_folder` のアンダースコアプレフィックスを削除 (public シンボルとして命名を統一)
@@ -103,7 +105,8 @@
 - pytest による 53 ユニットテスト (filters / xml_builder)
 - MIT ライセンス
 
-[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v0.1.0...v0.2.0
