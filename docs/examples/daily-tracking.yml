@@ -1,0 +1,90 @@
+# ============================================================
+# Salesforce メタデータ日次変更追跡ワークフロー
+# ============================================================
+#
+# このワークフローは毎朝 9:00 JST (= 00:00 UTC) に自動実行し、
+# Salesforce org のメタデータスナップショットを取得して git にコミットする。
+#
+# 使い方:
+#   1. このファイルを .github/workflows/daily-tracking.yml として配置する
+#   2. GitHub Secrets に以下を登録する
+#        SF_AUTH_URL : sfdx auth URL (sf org display --verbose で取得)
+#   3. SFDX_ALIAS を自 org のエイリアスに変更する
+#
+# 必要な権限:
+#   - 実行ユーザーが Metadata API の読み取り権限を持つこと
+#   - リポジトリに "Read and write permissions" が有効であること
+#     (Settings → Actions → General → Workflow permissions)
+# ============================================================
+
+name: Daily Metadata Tracking
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 毎朝 9:00 JST (UTC+9)
+  workflow_dispatch:        # 手動実行にも対応
+
+env:
+  SFDX_ALIAS: my-org       # ← 自分の org エイリアスに変更する
+
+jobs:
+  track:
+    name: Snapshot metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Salesforce CLI のインストール
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli
+
+      # SF_AUTH_URL を使って org を認証
+      - name: Authenticate to Salesforce
+        run: |
+          echo "${{ secrets.SF_AUTH_URL }}" | sf org login sfdx-url \
+            --sfdx-url-stdin \
+            --alias "${{ env.SFDX_ALIAS }}" \
+            --set-default
+
+      # Python と sf-package-xml のインストール
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install sf-package-xml
+        run: pip install git+https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
+
+      # package.xml とサマリ JSON を生成
+      - name: Generate package.xml
+        run: |
+          sf-package-xml \
+            --target-org "${{ env.SFDX_ALIAS }}" \
+            --output-dir manifest/ \
+            --summary-json manifest/summary.json \
+            --exclude-all-namespaces \
+            --skip-folders
+
+      # メタデータを取得
+      - name: Retrieve metadata
+        run: |
+          sf project retrieve start \
+            --manifest manifest/package.xml \
+            --target-org "${{ env.SFDX_ALIAS }}" \
+            --output-dir force-app/
+
+      # 変更があれば git コミット
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest/ force-app/
+          if git diff --staged --quiet; then
+            echo "変更なし。コミットをスキップします。"
+          else
+            DATE=$(date +"%Y-%m-%d")
+            git commit -m "chore: daily metadata snapshot ${DATE}"
+            git push
+          fi
