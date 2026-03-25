@@ -443,6 +443,9 @@ def main() -> None:
     if args.summary_json:
         summary = _build_summary(api_version, target_org, metadata_map, output_paths)
         summary_path = args.summary_json
+        summary_dir = os.path.dirname(summary_path)
+        if summary_dir:
+            os.makedirs(summary_dir, exist_ok=True)
         with open(summary_path, "w", encoding="utf-8") as fp:
             json.dump(summary, fp, ensure_ascii=False, indent=2)
         print(f"\nサマリを出力しました: {summary_path}", flush=True)
