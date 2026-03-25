@@ -8,6 +8,38 @@
 
 ## [1.0.0] - 2026-03-25
 
+### 追加
+
+- `--include-types TYPE` / `--exclude-types TYPE`: 取得対象タイプの絞り込み・除外オプション
+- `--list-types`: org のメタデータタイプ一覧を表示して終了するオプション
+- `--output-dir DIR`: 出力先ディレクトリ指定オプション
+- `--summary-json PATH`: 実行結果サマリ (タイプ別メンバー数・生成日時) の JSON 出力オプション
+- `--version`: バージョン表示オプション
+- `--log-file PATH`: ログをファイルにも同時出力するオプション
+- Metadata API コール数 (`DailyMetadataApiRequests`) の使用状況表示 (組織設定により表示されない場合あり)
+- pytest-cov によるテストカバレッジ計測 (CI でカバレッジレポートを自動生成)
+- Windows 向けインストール手順を README に追加
+- `docs/examples/daily-tracking.yml`: 実運用に基づく改善
+  - 認証方式を外部クライアントアプリケーション + JWT Bearer フローに変更
+  - IP アドレス制限の回避方法 (連携専用プロファイル/ユーザー) を注記
+  - `git stash → pull → stash pop` で並行コミットに対応
+  - `package*.xml` を `for` ループで retrieve し、分割ファイルに対応
+
+### 変更
+
+- ログ出力を `print` / `tprint` / `_print_lock` から `logging` モジュールに移行
+  - すべての出力にタイムスタンプとログレベルが付与される (`2026-03-25 12:00:00 INFO ...`)
+  - `--verbose` が DEBUG ログレベルとして機能するよう変更
+- `get_org_api_version`: `apiVersion` フィールドを優先取得し、`instanceApiVersion` にフォールバック (新旧 SF CLI 両対応)
+- オプション一覧テーブルを README に追記 (`--output-dir`, `--summary-json`, `--log-file` など)
+
+### 修正
+
+- `get_org_api_version`: `result` フィールドが `null` のとき AttributeError が発生するバグを修正
+- `get_org_api_version`: `apiVersion` が int 型のとき `instanceApiVersion` が無視されるバグを修正
+- `_setup_logging`: `--log-file` に無効なパスを指定したとき生のトレースバックが出るバグを修正 (OSError を捕捉してユーザー向けメッセージを表示)
+- `_on_complete` と `_on_folder_done` の進捗カウンタ更新を同一ロックで保護 (スレッド競合を解消)
+
 ## [0.2.0] - 2026-03-24
 
 ### 追加
