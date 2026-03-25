@@ -115,6 +115,9 @@ sf-package-xml -o myOrg --max-members 5000
 | `--exclude-all-namespaces` | - | 全名前空間付きメンバーを除外 |
 | `--workers N` | `8` | 並列ワーカー数 |
 | `--max-members N` | `10000` | 1ファイルあたりの最大メンバー数 |
+| `--include-types TYPE` | - | 取得対象タイプを指定 (複数指定可)。指定したタイプのみ取得 |
+| `--exclude-types TYPE` | - | 除外するタイプを指定 (複数指定可)。`--skip-folders` の汎用版 |
+| `--list-types` | - | org のメタデータタイプ一覧を表示して終了 |
 
 ## GitHub Actions との連携
 
