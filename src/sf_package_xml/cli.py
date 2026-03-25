@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
 
+from sf_package_xml import __version__
 from sf_package_xml.filters import filter_namespaced
 from sf_package_xml.metadata import (
     FOLDER_BASED_TYPES,
@@ -102,6 +103,11 @@ def _filter_type_map(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Salesforce org のすべてのメタデータを対象とする package.xml を生成します。"
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"sf-package-xml {__version__}",
     )
     parser.add_argument(
         "-o", "--target-org",
