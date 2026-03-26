@@ -150,9 +150,78 @@ sf-package-xml -o myOrg --max-members 5000
 `package.xml` の日次自動生成 + メタデータ取得 + git コミットのパイプラインに組み込む場合の例:
 
 ```yaml
-- name: Generate package.xml
-  run: sf-package-xml -o ${{ secrets.SF_ORG_ALIAS }} --exclude-all-namespaces
+name: Retrieve Metadata
+
+on:
+  workflow_dispatch:  # 手動実行
+  schedule:
+    - cron: '0 0 * * *'  # 毎日 UTC 0:00 (JST 9:00) に自動実行
+
+jobs:
+  retrieve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli
+
+      - name: Install sf-package-xml
+        run: pip install git+https://github.com/jsugawara-keizu/salesforce-generate-package-xml.git
+
+      - name: Authenticate to Salesforce via JWT
+        run: |
+          echo "${{ secrets.SF_PRIVATE_KEY }}" > server.key
+          sf org login jwt \
+            --client-id "${{ secrets.SF_CONSUMER_KEY }}" \
+            --jwt-key-file server.key \
+            --username "${{ secrets.SF_USERNAME }}" \
+            --instance-url "${{ secrets.SF_INSTANCE_URL }}" \
+            --set-default \
+            --alias my-org
+          rm -f server.key
+
+      - name: Generate package.xml
+        run: |
+          sf-package-xml \
+            --target-org my-org \
+            --output manifest/package.xml
+
+      - name: Retrieve metadata
+        run: |
+          for pkg in manifest/package*.xml; do
+            echo "Retrieving: $pkg"
+            sf project retrieve start \
+              --manifest "$pkg" \
+              --target-org my-org
+          done
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash
+          git pull --rebase origin main
+          git stash pop
+          git add force-app/ manifest/package*.xml
+          git diff --staged --quiet || git commit -m "chore: retrieve metadata [skip ci]"
+          git push
 ```
+
+必要な GitHub Secrets:
+
+| Secret | 内容 |
+|---|---|
+| `SF_CONSUMER_KEY` | 外部クライアントアプリケーションのクライアント ID |
+| `SF_PRIVATE_KEY` | JWT 署名用秘密鍵 (PEM 形式の内容をそのまま登録) |
+| `SF_USERNAME` | 連携専用ユーザーのユーザー名 |
+| `SF_INSTANCE_URL` | org の URL (`https://login.salesforce.com` または Sandbox URL) |
+
+> **IP アドレス制限がある場合**: GitHub Actions の実行 IP は固定されないため、連携専用プロファイルで「IP アドレスの制限なし」を設定した専用ユーザーで実行してください。
+
+詳細なサンプルは [docs/examples/daily-tracking.yml](docs/examples/daily-tracking.yml) を参照してください。
 
 終了コード:
 - `0`: 完全成功
@@ -168,6 +237,35 @@ pip install -e ".[dev]"
 # テスト実行
 pytest
 ```
+
+## 参考リンク
+
+### Salesforce 公式ドキュメント
+
+| リンク | 内容 |
+|---|---|
+| [Metadata API Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/) | Metadata API の全タイプ・制約の公式リファレンス |
+| [package.xml マニフェストファイル](https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/manifest_files.htm) | package.xml の書式・記法の説明 |
+| [Salesforce CLI コマンドリファレンス](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference_unified.htm) | `sf org list metadata` 等のコマンド仕様 |
+
+### GitHub リポジトリ
+
+| リポジトリ | 内容 |
+|---|---|
+| [forcedotcom/source-deploy-retrieve](https://github.com/forcedotcom/source-deploy-retrieve) | Salesforce CLI のメタデータ操作ライブラリ。`StandardValueSet` のメンバー一覧 (`stdValueSetRegistry.json`) の取得元 |
+| [forcedotcom/cli](https://github.com/forcedotcom/cli) | Salesforce CLI (`sf`) 本体 |
+
+### バージョン管理・変更履歴
+
+| リンク | 内容 |
+|---|---|
+| [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) | CHANGELOG.md のフォーマット規約 |
+| [Semantic Versioning](https://semver.org/lang/ja/) | バージョン番号の付け方 (MAJOR.MINOR.PATCH) |
+
+### Salesforce リリーススケジュール
+
+Salesforce は年3回 (Spring / Summer / Winter) メジャーリリースを行い、新しいメタデータタイプが追加されることがあります。
+このツールが参照する `stdValueSetRegistry.json` も各リリースで更新されますが、毎回 GitHub から最新版を取得するため常に最新状態を反映します。
 
 ## ライセンス
 

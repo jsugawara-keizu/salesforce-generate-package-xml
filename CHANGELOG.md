@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### 追加
+
+- README に GitHub Actions ワークフローのサンプル全文を掲載 (JWT 認証 → package.xml 生成 → retrieve → コミット)
+- README に参考リンクセクションを追加 (Salesforce 公式ドキュメント / 関連 GitHub リポジトリ / バージョン管理規約)
+
 ## [1.0.2] - 2026-03-25
 
 ### 変更
