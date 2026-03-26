@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-03-26
+
 ### 追加
 
 - README に GitHub Actions ワークフローのサンプル全文を掲載 (JWT 認証 → package.xml 生成 → retrieve → コミット)
@@ -110,7 +112,8 @@
 - pytest による 53 ユニットテスト (filters / xml_builder)
 - MIT ライセンス
 
-[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v0.2.0...v1.0.0
