@@ -116,7 +116,7 @@ jobs:
             git stash
             git pull --rebase
             git stash pop
-            git add manifest/ force-app/
+            git add -A manifest/ force-app/
             git commit -m "chore: daily metadata snapshot ${DATE}"
             git push
           fi
