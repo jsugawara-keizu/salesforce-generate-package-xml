@@ -87,9 +87,12 @@ jobs:
             --skip-folders
 
       # メタデータを取得
+      # 取得前に force-app/ をクリアすることで、Org 側で削除されたメタデータをローカルからも除去する
       # package.xml がメンバー上限超過で分割された場合 (package_01.xml, package_02.xml ...) にも対応する
       - name: Retrieve metadata
         run: |
+          git rm -r --cached force-app/ 2>/dev/null || true
+          rm -rf force-app/
           for manifest in manifest/package*.xml; do
             echo "Retrieving: ${manifest}"
             sf project retrieve start \
@@ -100,11 +103,12 @@ jobs:
 
       # 変更があれば git コミット
       # stash → pull → stash pop で、Action 実行中の並行 Commit にも対応する
+      # git add -A で削除されたファイルも含めてステージングする
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add manifest/ force-app/
+          git add -A manifest/ force-app/
           if git diff --staged --quiet; then
             echo "変更なし。コミットをスキップします。"
           else
