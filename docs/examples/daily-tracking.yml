@@ -86,24 +86,27 @@ jobs:
             --exclude-all-namespaces \
             --skip-folders
 
+      # 取得前にローカルのメタデータをクリア
+      # これにより org 側で削除されたファイルがリポジトリに残り続けるのを防ぐ
+      # ディレクトリ自体は sfdx-project.json の packageDirectories に必要なため再作成する
+      - name: Clean local metadata before retrieve
+        run: rm -rf force-app/ && mkdir -p force-app/
+
       # メタデータを取得
-      # 取得前に force-app/ をクリアすることで、Org 側で削除されたメタデータをローカルからも除去する
       # package.xml がメンバー上限超過で分割された場合 (package_01.xml, package_02.xml ...) にも対応する
       - name: Retrieve metadata
         run: |
-          git rm -r --cached force-app/ 2>/dev/null || true
-          rm -rf force-app/
           for manifest in manifest/package*.xml; do
             echo "Retrieving: ${manifest}"
             sf project retrieve start \
               --manifest "${manifest}" \
-              --target-org "${{ env.SFDX_ALIAS }}" \
-              --output-dir force-app/
+              --target-org "${{ env.SFDX_ALIAS }}"
           done
 
       # 変更があれば git コミット
       # stash → pull → stash pop で、Action 実行中の並行 Commit にも対応する
-      # git add -A で削除されたファイルも含めてステージングする
+      # git add -A で削除されたファイルも含めてステージングすることで
+      # org 側の削除もリポジトリの削除として反映する
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
