@@ -16,6 +16,7 @@
   - 未サポートタイプの特定に失敗した場合は即座に終了
 - `docs/examples/remove_unsupported_type.py` を追加: package.xml から指定タイプの `<types>` ブロックを除外するヘルパースクリプト
 - README の GitHub Actions サンプルにリトライロジックを反映
+- `--help` の説明文に GitHub リポジトリ URL を追加
 
 ## [1.0.3] - 2026-03-26
 
