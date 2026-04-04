@@ -5,6 +5,10 @@ Usage: python3 remove_unsupported_type.py <package.xml> <TypeName>
 import sys
 import xml.etree.ElementTree as ET
 
+if len(sys.argv) != 3:
+    print("Usage: python3 remove_unsupported_type.py <package.xml> <TypeName>", file=sys.stderr)
+    sys.exit(2)
+
 pkg, type_name = sys.argv[1], sys.argv[2]
 NS = "http://soap.sforce.com/2006/04/metadata"
 ET.register_namespace("", NS)

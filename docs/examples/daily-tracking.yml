@@ -110,12 +110,13 @@ jobs:
             while [ $attempt -lt $max_attempts ]; do
               attempt=$((attempt + 1))
               echo "Retrieving (attempt ${attempt}): ${manifest}"
-              error_output=$(sf project retrieve start \
+              if error_output=$(sf project retrieve start \
                 --manifest "${manifest}" \
-                --target-org "${{ env.SFDX_ALIAS }}" 2>&1)
-              exit_code=$?
+                --target-org "${{ env.SFDX_ALIAS }}" 2>&1); then
+                echo "${error_output}"
+                return 0
+              fi
               echo "${error_output}"
-              [ $exit_code -eq 0 ] && return 0
 
               # 取得できないメタデータタイプをエラーメッセージから抽出
               # パターン1: Entity of type 'TypeName' is not ...
@@ -137,7 +138,7 @@ jobs:
               fi
 
               echo "未サポートタイプ '${unsupported_type}' を ${manifest} から除外します"
-              python3 .github/scripts/remove_unsupported_type.py "${manifest}" "${unsupported_type}"
+              python3 docs/examples/remove_unsupported_type.py "${manifest}" "${unsupported_type}"
             done
             echo "最大リトライ回数 (${max_attempts}) に達しました。処理を終了します。"
             return 1
