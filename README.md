@@ -191,11 +191,40 @@ jobs:
 
       - name: Retrieve metadata
         run: |
+          retrieve_with_retry() {
+            local manifest="$1"
+            local max_attempts=10
+            local attempt=0
+            while [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt + 1))
+              echo "Retrieving (attempt ${attempt}): ${manifest}"
+              if error_output=$(sf project retrieve start \
+                --manifest "${manifest}" \
+                --target-org my-org 2>&1); then
+                echo "${error_output}"
+                return 0
+              fi
+              echo "${error_output}"
+              unsupported_type=$(echo "${error_output}" | grep -oP "(?<=Entity of type ')[^']+" | head -1)
+              if [ -z "${unsupported_type}" ]; then
+                unsupported_type=$(echo "${error_output}" | grep -oP "(?<=No type named: )\S+" | head -1)
+              fi
+              if [ -z "${unsupported_type}" ]; then
+                unsupported_type=$(echo "${error_output}" | grep -oP "(?<=for id ')[^']+" | head -1)
+              fi
+              if [ -z "${unsupported_type}" ]; then
+                echo "復旧不可能なエラー (未サポートタイプを特定できません)。処理を終了します。"
+                return 1
+              fi
+              echo "未サポートタイプ '${unsupported_type}' を ${manifest} から除外します"
+              python3 docs/examples/remove_unsupported_type.py "${manifest}" "${unsupported_type}"
+            done
+            echo "最大リトライ回数 (${max_attempts}) に達しました。処理を終了します。"
+            return 1
+          }
+
           for pkg in manifest/package*.xml; do
-            echo "Retrieving: $pkg"
-            sf project retrieve start \
-              --manifest "$pkg" \
-              --target-org my-org
+            retrieve_with_retry "$pkg"
           done
 
       - name: Commit and push if changed
@@ -221,7 +250,10 @@ jobs:
 
 > **IP アドレス制限がある場合**: GitHub Actions の実行 IP は固定されないため、連携専用プロファイルで「IP アドレスの制限なし」を設定した専用ユーザーで実行してください。
 
-詳細なサンプルは [docs/examples/daily-tracking.yml](docs/examples/daily-tracking.yml) を参照してください。
+詳細なサンプルは以下を参照してください:
+
+- [docs/examples/daily-tracking.yml](docs/examples/daily-tracking.yml) — 完全なワークフロー定義
+- [docs/examples/remove_unsupported_type.py](docs/examples/remove_unsupported_type.py) — リトライ時に未サポートタイプを package.xml から除外するヘルパースクリプト
 
 終了コード:
 - `0`: 完全成功

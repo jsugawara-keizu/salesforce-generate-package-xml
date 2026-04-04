@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-04-04
+
+### 追加
+
+- `docs/examples/daily-tracking.yml` にリトライロジックを追加
+  - 取得失敗時に未サポートメタデータタイプをエラーメッセージから自動検出し、最大 10 回再試行
+  - 対応エラーパターン: `Entity of type 'TypeName' is not ...` / `No type named: TypeName` / `Missing metadata type definition in registry for id 'TypeName'`
+  - 未サポートタイプの特定に失敗した場合は即座に終了
+- `docs/examples/remove_unsupported_type.py` を追加: package.xml から指定タイプの `<types>` ブロックを除外するヘルパースクリプト
+- README の GitHub Actions サンプルにリトライロジックを反映
+
 ## [1.0.3] - 2026-03-26
 
 ### 追加
@@ -112,7 +123,8 @@
 - pytest による 53 ユニットテスト (filters / xml_builder)
 - MIT ライセンス
 
-[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.0...v1.0.1
