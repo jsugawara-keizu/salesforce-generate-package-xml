@@ -131,7 +131,11 @@ def _filter_type_map(
 def main() -> None:
     """sf-package-xml コマンドのエントリーポイント。"""
     parser = argparse.ArgumentParser(
-        description="Salesforce org のすべてのメタデータを対象とする package.xml を生成します。"
+        description=(
+            "Salesforce org のすべてのメタデータを対象とする package.xml を生成します。\n"
+            "詳細: https://github.com/jsugawara-keizu/salesforce-generate-package-xml"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version",
