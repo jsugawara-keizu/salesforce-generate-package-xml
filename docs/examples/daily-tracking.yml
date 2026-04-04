@@ -94,13 +94,58 @@ jobs:
 
       # メタデータを取得
       # package.xml がメンバー上限超過で分割された場合 (package_01.xml, package_02.xml ...) にも対応する
+      # リトライロジック:
+      #   取得に失敗した場合、エラーメッセージから未サポートのメタデータタイプを特定し
+      #   remove_unsupported_type.py で package.xml から除外した上で最大 10 回まで再試行する
+      #   以下の 3 パターンのエラーメッセージに対応する:
+      #     - Entity of type 'TypeName' is not ...
+      #     - No type named: TypeName
+      #     - Missing metadata type definition in registry for id 'TypeName'
       - name: Retrieve metadata
         run: |
+          retrieve_with_retry() {
+            local manifest="$1"
+            local max_attempts=10
+            local attempt=0
+            while [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt + 1))
+              echo "Retrieving (attempt ${attempt}): ${manifest}"
+              error_output=$(sf project retrieve start \
+                --manifest "${manifest}" \
+                --target-org "${{ env.SFDX_ALIAS }}" 2>&1)
+              exit_code=$?
+              echo "${error_output}"
+              [ $exit_code -eq 0 ] && return 0
+
+              # 取得できないメタデータタイプをエラーメッセージから抽出
+              # パターン1: Entity of type 'TypeName' is not ...
+              unsupported_type=$(echo "${error_output}" | \
+                grep -oP "(?<=Entity of type ')[^']+" | head -1)
+              # パターン2: No type named: TypeName
+              if [ -z "${unsupported_type}" ]; then
+                unsupported_type=$(echo "${error_output}" | \
+                  grep -oP "(?<=No type named: )\S+" | head -1)
+              fi
+              # パターン3: Missing metadata type definition in registry for id 'TypeName'
+              if [ -z "${unsupported_type}" ]; then
+                unsupported_type=$(echo "${error_output}" | \
+                  grep -oP "(?<=for id ')[^']+" | head -1)
+              fi
+              if [ -z "${unsupported_type}" ]; then
+                echo "復旧不可能なエラー (未サポートタイプを特定できません)。処理を終了します。"
+                return 1
+              fi
+
+              echo "未サポートタイプ '${unsupported_type}' を ${manifest} から除外します"
+              python3 .github/scripts/remove_unsupported_type.py "${manifest}" "${unsupported_type}"
+            done
+            echo "最大リトライ回数 (${max_attempts}) に達しました。処理を終了します。"
+            return 1
+          }
+
           for manifest in manifest/package*.xml; do
-            echo "Retrieving: ${manifest}"
-            sf project retrieve start \
-              --manifest "${manifest}" \
-              --target-org "${{ env.SFDX_ALIAS }}"
+            echo "Processing: ${manifest}"
+            retrieve_with_retry "${manifest}"
           done
 
       # 変更があれば git コミット
