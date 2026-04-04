@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-04-04
+
 ## [1.0.4] - 2026-04-04
 
 ### 追加
@@ -124,7 +126,8 @@
 - pytest による 53 ユニットテスト (filters / xml_builder)
 - MIT ライセンス
 
-[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/jsugawara-keizu/salesforce-generate-package-xml/compare/v1.0.1...v1.0.2
